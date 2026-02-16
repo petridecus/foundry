@@ -328,10 +328,19 @@ class SampleDiffusionWithMotif(SampleDiffusionConfig):
             t_hats.append(t_hat)
 
             if step_callback is not None:
+                # Align streaming coords to the input motif frame so
+                # intermediate frames match the final output orientation.
+                cb_coords = X_denoised_L.detach()
+                if torch.any(is_motif_atom_with_fixed_coord) and self.allow_realignment:
+                    cb_coords = weighted_rigid_align(
+                        coord_atom_lvl_to_be_noised,
+                        cb_coords,
+                        X_exists_L=is_motif_atom_with_fixed_coord,
+                    )
                 step_callback(StepInfo(
                     step=step_num + 1,
                     total_steps=len(noise_schedule) - 1,
-                    coords=X_denoised_L.detach(),
+                    coords=cb_coords,
                     noise_level=t_hat.item(),
                     sequence_logits=outs.get("sequence_logits_I"),
                     motif_mask=is_motif_atom_with_fixed_coord,
@@ -549,10 +558,17 @@ class SampleDiffusionWithSymmetry(SampleDiffusionWithMotif):
             t_hats.append(t_hat)
 
             if step_callback is not None:
+                cb_coords = X_denoised_L.detach()
+                if torch.any(is_motif_atom_with_fixed_coord) and self.allow_realignment:
+                    cb_coords = weighted_rigid_align(
+                        coord_atom_lvl_to_be_noised,
+                        cb_coords,
+                        X_exists_L=is_motif_atom_with_fixed_coord,
+                    )
                 step_callback(StepInfo(
                     step=step_num + 1,
                     total_steps=len(noise_schedule) - 1,
-                    coords=X_denoised_L.detach(),
+                    coords=cb_coords,
                     noise_level=t_hat.item(),
                     sequence_logits=outs.get("sequence_logits_I"),
                     motif_mask=is_motif_atom_with_fixed_coord,

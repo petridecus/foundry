@@ -710,7 +710,13 @@ class MPNNInferenceInput:
 
         # Copy atom array.
         atom_array = atom_array.copy() if atom_array is not None else None
-        parser_output = parse_atom_array(atom_array) if atom_array is not None else {}
+        if atom_array is not None:
+            parse_kwargs = {}
+            if isinstance(atom_array, AtomArrayPlus):
+                parse_kwargs["add_missing_atoms"] = False
+            parser_output = parse_atom_array(atom_array, **parse_kwargs)
+        else:
+            parser_output = {}
         atom_array = (
             parser_output["assemblies"]["1"][0]
             if len(parser_output.get("assemblies", {})) > 0

@@ -72,6 +72,7 @@ class RFD3(nn.Module):
         input: dict,
         coord_atom_lvl_to_be_noised: torch.Tensor = None,
         n_cycle=None,
+        step_callback=None,
         **_,
     ) -> dict:
         initializer_outputs = self.token_initializer(input["f"])
@@ -99,6 +100,7 @@ class RFD3(nn.Module):
                 diffusion_module=self.diffusion_module,
                 diffusion_batch_size=coord_atom_lvl_to_be_noised.shape[0],
                 coord_atom_lvl_to_be_noised=coord_atom_lvl_to_be_noised,
+                step_callback=step_callback,
                 # Forwarded as **kwargs:
                 initializer_outputs=initializer_outputs,
                 ref_initializer_outputs=ref_initializer_outputs,  # for cfg

@@ -1,7 +1,10 @@
+from typing import Callable
+
 import torch
 from beartype.typing import Any, Literal
 from jaxtyping import Float
 
+from foundry.step_info import StepInfo
 from foundry.utils.ddp import RankedLogger
 from foundry.utils.rotation_augmentation import centre_random_augmentation
 
@@ -117,6 +120,7 @@ class SampleDiffusion:
         diffusion_module: torch.nn.Module,
         diffusion_batch_size: int,
         coord_atom_lvl_to_be_noised: Float[torch.Tensor, "D L 3"],
+        step_callback: Callable[[StepInfo], None] | None = None,
     ) -> dict[str, Any]:
         """Perform a complete diffusion roll-out with the given recycling outputs.
 
@@ -145,8 +149,9 @@ class SampleDiffusion:
         X_noisy_L_traj = []
         X_denoised_L_traj = []
         t_hats = []
+        num_steps = len(noise_schedule) - 1
 
-        for c_t_minus_1, c_t in zip(noise_schedule, noise_schedule[1:]):
+        for step_num, (c_t_minus_1, c_t) in enumerate(zip(noise_schedule, noise_schedule[1:])):
             # (All predicted atoms exist)
             X_exists_L = torch.ones((D, L)).bool()  # (D, L)
 
@@ -194,6 +199,14 @@ class SampleDiffusion:
             X_noisy_L_traj.append(X_noisy_L_scaled)
             X_denoised_L_traj.append(X_denoised_L)
             t_hats.append(t_hat)
+
+            if step_callback is not None:
+                step_callback(StepInfo(
+                    step=step_num + 1,
+                    total_steps=num_steps,
+                    coords=X_denoised_L.detach(),
+                    noise_level=t_hat.item(),
+                ))
 
         return dict(
             X_L=X_L,  # (D, L, 3)

@@ -50,8 +50,27 @@ except ImportError:
     logger.debug("cuEquivariance unavailable: import failed")
 
 
+# MLX backend flag (Apple Silicon GPU acceleration)
+SHOULD_USE_MLX = False
+
+if not SHOULD_USE_CUEQUIVARIANCE:
+    try:
+        import mlx.core as mx  # noqa: F401
+
+        SHOULD_USE_MLX = True
+        logger.info("MLX is available and will be used for Apple Silicon acceleration.")
+    except ImportError:
+        logger.debug("MLX unavailable: import failed")
+
 # Whether to disable checkpointing globally
 DISABLE_CHECKPOINTING = False
 
+from foundry.step_info import StepInfo  # noqa: E402
+
 # Export for easy access
-__all__ = ["SHOULD_USE_CUEQUIVARIANCE", "DISABLE_CHECKPOINTING"]
+__all__ = [
+    "SHOULD_USE_CUEQUIVARIANCE",
+    "SHOULD_USE_MLX",
+    "DISABLE_CHECKPOINTING",
+    "StepInfo",
+]

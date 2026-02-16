@@ -126,6 +126,7 @@ class RF3(nn.Module):
         input: dict,
         n_cycle: int,
         coord_atom_lvl_to_be_noised: torch.Tensor = None,
+        step_callback=None,
     ) -> dict:
         """Complete forward pass of the model.
 
@@ -136,6 +137,7 @@ class RF3(nn.Module):
             n_cycle (int): Number of recycling cycles for the trunk
             coord_atom_lvl_to_be_noised (torch.Tensor): Atom-level coordinates to be noised further. Optional;
                 only used during inference for partial denoising.
+            step_callback: Optional callback invoked after each diffusion step with a StepInfo.
 
         Returns:
             dict: Dictionary of model outputs, including:
@@ -148,7 +150,8 @@ class RF3(nn.Module):
         """
         # Cast features to lower precision if autocast is enabled
         if torch.is_autocast_enabled():
-            autocast_dtype = torch.get_autocast_dtype("cuda")
+            device_type = next(self.parameters()).device.type
+            autocast_dtype = torch.get_autocast_dtype(device_type)
             for x in [
                 "msa_stack",
                 "profile",
@@ -199,6 +202,7 @@ class RF3(nn.Module):
                 diffusion_module=self.diffusion_module,
                 diffusion_batch_size=input["t"].shape[0],
                 coord_atom_lvl_to_be_noised=coord_atom_lvl_to_be_noised,
+                step_callback=step_callback,
             )
             return dict(
                 X_L=sample_diffusion_outs["X_L"],
@@ -352,6 +356,7 @@ class RF3WithConfidence(RF3):
         input: dict,
         n_cycle: int,
         coord_atom_lvl_to_be_noised: torch.Tensor | None = None,
+        step_callback=None,
         should_early_stop_fn: ShouldEarlyStopFn | None = None,
     ) -> dict:
         """Complete forward pass of the model with confidence head.
@@ -382,7 +387,8 @@ class RF3WithConfidence(RF3):
         """
         # Cast features to lower precision if autocast is enabled
         if torch.is_autocast_enabled():
-            autocast_dtype = torch.get_autocast_dtype("cuda")
+            device_type = next(self.parameters()).device.type
+            autocast_dtype = torch.get_autocast_dtype(device_type)
             for x in [
                 "msa_stack",
                 "profile",
@@ -464,6 +470,7 @@ class RF3WithConfidence(RF3):
                         diffusion_module=self.diffusion_module,
                         diffusion_batch_size=diffusion_batch_size,
                         coord_atom_lvl_to_be_noised=coord_atom_lvl_to_be_noised,
+                        step_callback=step_callback,
                     )
                 )
 

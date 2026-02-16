@@ -8,11 +8,17 @@ from jaxtyping import Float
 from opt_einsum import contract as einsum
 from rf3.util_module import init_lecun_normal
 
-from foundry import SHOULD_USE_CUEQUIVARIANCE
+from foundry import SHOULD_USE_CUEQUIVARIANCE, SHOULD_USE_MLX
 from foundry.training.checkpoint import activation_checkpointing
 
 if SHOULD_USE_CUEQUIVARIANCE:
     import cuequivariance_torch as cuet
+
+if SHOULD_USE_MLX:
+    from foundry.backends.mlx_ops import (
+        mlx_triangle_attention,
+        mlx_triangle_multiplicative_update,
+    )
 
 
 class TriangleAttention(nn.Module):
@@ -87,6 +93,8 @@ class TriangleAttention(nn.Module):
         # Route to appropriate implementation
         if self.use_cuequivariance and SHOULD_USE_CUEQUIVARIANCE:
             out = self._forward_cuequivariance(pair, bias)
+        elif SHOULD_USE_MLX:
+            out = self._forward_mlx(pair, bias)
         else:
             out = self._forward_vanilla(pair, bias)
 
@@ -127,6 +135,29 @@ class TriangleAttention(nn.Module):
 
         # Reshape back: (B, L, H, L, D) -> (B, L, L, H*D)
         out = rearrange(out_cueq, "b i h j d -> b i j (h d)")
+        out = gate * out  # gated attention
+        return out
+
+    def _forward_mlx(self, pair, bias):
+        """MLX triangle attention for Apple Silicon GPU acceleration."""
+        # Gate computation (stays in PyTorch)
+        gate = torch.sigmoid(self.to_g(pair))  # (B, L, L, h*dim)
+
+        # Project and reshape to cuEquivariance-compatible format: (B, L, H, L, D)
+        query = rearrange(self.to_q(pair), "b i j (h d) -> b i h j d", h=self.h)
+        key = rearrange(self.to_k(pair), "b i k (h d) -> b i h k d", h=self.h)
+        value = rearrange(self.to_v(pair), "b i k (h d) -> b i h k d", h=self.h)
+
+        # Bias: (B, L, L, H) -> (B, 1, H, L, L)
+        bias_mlx = rearrange(bias, "b i j h -> b 1 h i j")
+
+        # MLX-accelerated attention
+        out_mlx = mlx_triangle_attention(
+            query, key, value, bias=bias_mlx, scale=self.scaling
+        )
+
+        # Reshape back: (B, L, H, L, D) -> (B, L, L, H*D)
+        out = rearrange(out_mlx, "b i h j d -> b i j (h d)")
         out = gate * out  # gated attention
         return out
 
@@ -237,8 +268,29 @@ class TriangleMultiplication(nn.Module):
         # Route to appropriate implementation
         if self.use_cuequivariance and SHOULD_USE_CUEQUIVARIANCE:
             return self._forward_cuequivariance(pair)
+        elif SHOULD_USE_MLX:
+            return self._forward_mlx(pair)
         else:
             return self._forward_vanilla(pair)
+
+    def _forward_mlx(
+        self, pair: Float[torch.Tensor, "B N N D"]
+    ) -> Float[torch.Tensor, "B N N D"]:
+        """MLX triangle multiplicative update for Apple Silicon GPU acceleration."""
+        return mlx_triangle_multiplicative_update(
+            x=pair,
+            direction=self.direction,
+            mask=None,
+            norm_in_weight=self.norm_in.weight,
+            norm_in_bias=self.norm_in.bias,
+            p_in_weight=self.p_in.weight,
+            g_in_weight=self.g_in.weight,
+            norm_out_weight=self.norm_out.weight,
+            norm_out_bias=self.norm_out.bias,
+            p_out_weight=self.p_out.weight,
+            g_out_weight=self.g_out.weight,
+            eps=1e-5,
+        )
 
     def _forward_vanilla(
         self, pair: Float[torch.Tensor, "B N N D"]

@@ -67,13 +67,15 @@ class MPNNInferenceEngine:
             else checkpoint_path
         )
 
-        # Determine the device (supports XPU, CUDA, and CPU).
+        # Determine the device (supports XPU, CUDA, MPS, and CPU).
         if device is not None:
             self.device = torch.device(device)
         elif torch.cuda.is_available():
             self.device = torch.device("cuda")
         elif hasattr(torch, "xpu") and torch.xpu.is_available():
             self.device = torch.device("xpu")
+        elif torch.backends.mps.is_available():
+            self.device = torch.device("mps")
         else:
             self.device = torch.device("cpu")
 

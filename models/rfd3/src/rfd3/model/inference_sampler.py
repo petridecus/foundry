@@ -1,7 +1,7 @@
 import inspect
 import time
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 
 import torch
 from jaxtyping import Float
@@ -9,6 +9,7 @@ from rfd3.inference.symmetry.symmetry_utils import apply_symmetry_to_xyz_atomwis
 from rfd3.model.cfg_utils import strip_X
 
 from foundry.common import exists
+from foundry.step_info import StepInfo
 from foundry.utils.alignment import weighted_rigid_align
 from foundry.utils.ddp import RankedLogger
 from foundry.utils.rotation_augmentation import (
@@ -148,6 +149,7 @@ class SampleDiffusionWithMotif(SampleDiffusionConfig):
         initializer_outputs,
         ref_initializer_outputs: dict[str, Any] | None,
         f_ref: dict[str, Any] | None,
+        step_callback: Callable[[StepInfo], None] | None = None,
     ) -> dict[str, Any]:
         # Motif setup to recenter the motif at every step
         is_motif_atom_with_fixed_coord = f["is_motif_atom_with_fixed_coord"]
@@ -317,6 +319,16 @@ class SampleDiffusionWithMotif(SampleDiffusionConfig):
             X_denoised_L_traj.append(X_denoised_L)
             t_hats.append(t_hat)
 
+            if step_callback is not None:
+                step_callback(StepInfo(
+                    step=step_num + 1,
+                    total_steps=len(noise_schedule) - 1,
+                    coords=X_denoised_L.detach(),
+                    noise_level=t_hat.item(),
+                    sequence_logits=outs.get("sequence_logits_I"),
+                    motif_mask=is_motif_atom_with_fixed_coord,
+                ))
+
         if torch.any(is_motif_atom_with_fixed_coord) and self.allow_realignment:
             # Insert the gt motif at the end
             X_L, _ = centre_random_augment_around_motif(
@@ -382,6 +394,7 @@ class SampleDiffusionWithSymmetry(SampleDiffusionWithMotif):
         initializer_outputs,
         ref_initializer_outputs: dict[str, Any] | None,
         f_ref: dict[str, Any] | None,
+        step_callback: Callable[[StepInfo], None] | None = None,
         **_,
     ) -> dict[str, Any]:
         # Motif setup to recenter the motif at every step
@@ -519,6 +532,16 @@ class SampleDiffusionWithSymmetry(SampleDiffusionWithMotif):
             X_denoised_L_traj.append(X_denoised_L)
             t_hats.append(t_hat)
 
+            if step_callback is not None:
+                step_callback(StepInfo(
+                    step=step_num + 1,
+                    total_steps=len(noise_schedule) - 1,
+                    coords=X_denoised_L.detach(),
+                    noise_level=t_hat.item(),
+                    sequence_logits=outs.get("sequence_logits_I"),
+                    motif_mask=is_motif_atom_with_fixed_coord,
+                ))
+
         if torch.any(is_motif_atom_with_fixed_coord) and self.allow_realignment:
             # Insert the gt motif at the end
             X_L, R = centre_random_augment_around_motif(
@@ -577,8 +600,8 @@ class ConditionalDiffusionSampler:
             )
         self.sampler = SamplerCls(**kwargs)
 
-    def sample_diffusion_like_af3(self, **kwargs):
-        return self.sampler.sample_diffusion_like_af3(**kwargs)
+    def sample_diffusion_like_af3(self, *, step_callback=None, **kwargs):
+        return self.sampler.sample_diffusion_like_af3(step_callback=step_callback, **kwargs)
 
     def get_class_init_args(self, cls):
         arg_names = []

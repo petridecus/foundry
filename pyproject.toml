@@ -48,6 +48,8 @@ dependencies = [
     "ipykernel>=6.31.0",
     "assertpy",
     "toolz",
+    # ... Apple Silicon GPU acceleration
+    "mlx>=0.22.0; sys_platform == 'darwin' and platform_machine == 'arm64'",
 ]
 
 

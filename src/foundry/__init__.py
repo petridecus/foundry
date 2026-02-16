@@ -1,5 +1,10 @@
 import logging
 import os
+import platform
+
+# Must be set BEFORE importing torch — checked during MPS backend init
+if platform.system() == "Darwin":
+    os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 
 import torch
 from beartype.claw import beartype_this_package

@@ -189,6 +189,7 @@ class AADesignTrainer(FabricTrainer):
         batch: Any,
         batch_idx: int,
         compute_metrics: bool = True,
+        step_callback=None,
     ) -> dict:
         """Validation step, running forward pass and computing validation metrics.
 
@@ -219,6 +220,7 @@ class AADesignTrainer(FabricTrainer):
         network_output = model.forward(
             input=network_input,
             coord_atom_lvl_to_be_noised=example["coord_atom_lvl_to_be_noised"],
+            step_callback=step_callback,
         )
 
         assert_no_nans(

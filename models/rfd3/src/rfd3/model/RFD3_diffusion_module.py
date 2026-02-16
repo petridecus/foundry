@@ -237,9 +237,8 @@ class RFD3DiffusionModule(nn.Module):
         else:
             # Standard mode: use full P_LL
             Q_L = self.encoder(Q_L, C_L, P_LL, indices=f["attn_indices"])
-        A_I = self.downcast_q(Q_L, A_I=A_I, S_I=S_I, tok_idx=tok_idx)
 
-        # Debug chunked parameters
+        A_I = self.downcast_q(Q_L, A_I=A_I, S_I=S_I, tok_idx=tok_idx)
 
         # ... Run forward with recycling
         recycled_features = self.forward_with_recycle(
@@ -343,7 +342,6 @@ class RFD3DiffusionModule(nn.Module):
 
         # ... Decoder readout
         # Check if using chunked P_LL mode
-
         if chunked_pairwise_embedder is not None:
             # Chunked mode: pass embedder and no P_LL
             A_I, Q_L, o = self.decoder(

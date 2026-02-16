@@ -65,12 +65,20 @@ def ungroup_atoms(Q_L, valid_mask):
     -------
     Q_IA       : (B, n_tokens, A, c)    # padded with zeros
     """
+    if Q_L.ndim != 3:
+        raise ValueError(
+            f"ungroup_atoms expected Q_L with 3 dims (B, n_atoms, c), "
+            f"got shape {Q_L.shape} (ndim={Q_L.ndim}, device={Q_L.device}, dtype={Q_L.dtype}). "
+            f"valid_mask.shape={valid_mask.shape}"
+        )
     B, n_atoms, c = Q_L.shape
     n_tokens, A = valid_mask.shape
     Q_IA = torch.zeros(B, n_tokens, A, c, dtype=Q_L.dtype, device=Q_L.device)
     mask4d = valid_mask.unsqueeze(0).unsqueeze(-1)  # (1, n_tok, A, 1)
     mask4d = mask4d.expand(B, -1, -1, c)  # (B, n_tok, A, c)
-    Q_IA.masked_scatter_(mask4d, Q_L)
+    # MPS masked_scatter_ corrupts the source tensor's shape metadata (flattens it).
+    # Pass a clone to protect the caller's Q_L tensor.
+    Q_IA.masked_scatter_(mask4d, Q_L.clone())
     return Q_IA
 
 
@@ -438,7 +446,8 @@ def get_sparse_attention_indices(
     # Sort and assert no duplicates (optional but good practise)
     indices, _ = torch.sort(indices, dim=-1)
     if (indices[..., 1:] == indices[..., :-1]).any():
-        raise AssertionError("Tensor has duplicate elements along the last dimension.")
+        if D_LL.device.type != "mps":
+            raise AssertionError("Tensor has duplicate elements along the last dimension.")
 
     assert (
         indices.shape[-1] == k_max

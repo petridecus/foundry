@@ -260,6 +260,14 @@ class SampleDiffusionWithMotif(SampleDiffusionConfig):
 
             X_denoised_L = outs["X_L"] if "X_L" in outs else outs
 
+            # Abort early if the model produced NaN — continuing is pointless
+            if torch.isnan(X_denoised_L).any():
+                raise RuntimeError(
+                    f"Diffusion step {step_num}: model output contains NaN. "
+                    "This typically indicates numerical overflow in low-precision "
+                    "layers (e.g. float16 on MPS)."
+                )
+
             # Compute the delta between the noisy and denoised coordinates, scaled by t_hat
             delta_L = (
                 X_noisy_L - X_denoised_L
@@ -501,6 +509,14 @@ class SampleDiffusionWithSymmetry(SampleDiffusionWithMotif):
                 outs["X_L"] = self.apply_symmetry_to_X_L(outs["X_L"], f)
 
             X_denoised_L = outs["X_L"] if "X_L" in outs else outs
+
+            # Abort early if the model produced NaN — continuing is pointless
+            if torch.isnan(X_denoised_L).any():
+                raise RuntimeError(
+                    f"Diffusion step {step_num}: model output contains NaN. "
+                    "This typically indicates numerical overflow in low-precision "
+                    "layers (e.g. float16 on MPS)."
+                )
 
             # Compute the delta between the noisy and denoised coordinates, scaled by t_hat
             delta_L = (

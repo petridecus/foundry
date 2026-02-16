@@ -38,6 +38,17 @@ class AttentionPairBiasPairformerDeepspeed(nn.Module):
         self.use_deepspeed_evo = False
         self.force_bfloat16 = True
 
+    @staticmethod
+    def _lowp_dtype():
+        """Return the preferred low-precision dtype for the current device.
+
+        MPS does not support bfloat16, and float16's narrow range (max ~65504)
+        causes overflow → NaN in attention scores.  Use float32 on MPS instead.
+        """
+        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            return torch.float32
+        return torch.bfloat16
+
     def forward(
         self,
         A_I,  # [I, C_a]
@@ -50,7 +61,7 @@ class AttentionPairBiasPairformerDeepspeed(nn.Module):
         A_I = self.ln_1(A_I)
 
         if self.use_deepspeed_evo or self.force_bfloat16:
-            A_I = A_I.to(torch.bfloat16)
+            A_I = A_I.to(self._lowp_dtype())
 
         Q_IH = self.to_q(A_I)  # / np.sqrt(self.c)
         K_IH = self.to_k(A_I)
@@ -62,7 +73,7 @@ class AttentionPairBiasPairformerDeepspeed(nn.Module):
 
         if not self.use_deepspeed_evo or L <= 24:
             Q_IH = Q_IH / torch.sqrt(
-                torch.tensor(self.c).to(Q_IH.device, torch.bfloat16)
+                torch.tensor(self.c).to(Q_IH.device, self._lowp_dtype())
             )
             # Attention
             A_IIH = torch.softmax(
@@ -116,8 +127,9 @@ class PairformerBlock(nn.Module):
 
     @activation_checkpointing
     def forward(self, S_I, Z_II):
+        _lowp = AttentionPairBiasPairformerDeepspeed._lowp_dtype()
         with torch.amp.autocast(
-            device_type=device_of(self).type, enabled=True, dtype=torch.bfloat16
+            device_type=device_of(self).type, enabled=True, dtype=_lowp
         ):
             Z_II = Z_II + self.z_transition(Z_II)
             if S_I is not None:

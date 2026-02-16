@@ -655,7 +655,7 @@ class LocalAtomTransformer(nn.Module):
         )
 
     def forward(self, Q_L, C_L, P_LL, **kwargs):
-        for block in self.blocks:
+        for i, block in enumerate(self.blocks):
             Q_L = block(Q_L, C_L, P_LL, **kwargs)
         return Q_L
 
@@ -693,17 +693,16 @@ class StructureLocalAtomTransformerBlock(nn.Module):
         initializer_outputs=None,
         **kwargs,
     ):
-        Q_L = Q_L + self.dropout(
-            self.attention_pair_bias(
-                Q_L,
-                C_L,
-                P_LL,
-                f=f,
-                chunked_pairwise_embedder=chunked_pairwise_embedder,
-                initializer_outputs=initializer_outputs,
-                **kwargs,
-            )
+        attn_out = self.attention_pair_bias(
+            Q_L,
+            C_L,
+            P_LL,
+            f=f,
+            chunked_pairwise_embedder=chunked_pairwise_embedder,
+            initializer_outputs=initializer_outputs,
+            **kwargs,
         )
+        Q_L = Q_L + self.dropout(attn_out)
         if exists(C_L):
             Q_L = Q_L + self.transition_block(Q_L, C_L)
         else:

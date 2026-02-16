@@ -233,7 +233,7 @@ class RFD3InferenceEngine(BaseInferenceEngine):
             ranked_logger.info(f"Outputs will be written to {out_dir.resolve()}.")
         self.out_dir = out_dir
 
-    def _run_multi(self, specs) -> None | Dict[str, List[RFD3Output]]:
+    def _run_multi(self, specs, step_callback=None) -> None | Dict[str, List[RFD3Output]]:
         # ==============================================================================
         # Prepare pipeline and inference loader
         # ==============================================================================
@@ -263,7 +263,7 @@ class RFD3InferenceEngine(BaseInferenceEngine):
             example_id = pipeline_output["example_id"]
 
             # Run model
-            output_list = self._model_forward(pipeline_output)
+            output_list = self._model_forward(pipeline_output, step_callback=step_callback)
             if self.out_dir:
                 for output in output_list:
                     output.dump(out_dir=self.out_dir)
@@ -271,7 +271,7 @@ class RFD3InferenceEngine(BaseInferenceEngine):
                 outputs[example_id] = output_list
         return outputs
 
-    def _model_forward(self, pipeline_output) -> List[RFD3Output]:
+    def _model_forward(self, pipeline_output, step_callback=None) -> List[RFD3Output]:
         # Wraps around the trainer validation step to create atom arrays for saving.
         t0 = time.time()
         with torch.no_grad():
@@ -280,6 +280,7 @@ class RFD3InferenceEngine(BaseInferenceEngine):
                 batch=pipeline_output,
                 batch_idx=0,
                 compute_metrics=False,
+                step_callback=step_callback,
             )
         t_end = time.time()
 

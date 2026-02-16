@@ -39,6 +39,17 @@ def set_accelerator_based_on_availability(cfg: dict | DictConfig):
     elif hasattr(torch, "xpu") and torch.xpu.is_available():
         logger.info("Intel XPU detected - using XPU accelerator")
         cfg.trainer.accelerator = "xpu"
+    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        logger.info("Apple MPS detected - using MPS accelerator")
+        cfg.trainer.accelerator = "mps"
+        cfg.trainer.devices_per_node = 1
+        cfg.trainer.num_nodes = 1
+        # MPS does not fully support bfloat16 autocast — override to float32
+        if hasattr(cfg.trainer, "precision") and "bf16" in str(cfg.trainer.precision):
+            logger.info(
+                f"Overriding precision '{cfg.trainer.precision}' -> '32-true' for MPS compatibility"
+            )
+            cfg.trainer.precision = "32-true"
     else:
         logger.error(
             "No GPUs/XPUs available - Setting accelerator to 'cpu'. Are you sure you are using the correct configs?"

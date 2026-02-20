@@ -485,6 +485,7 @@ class RF3TrainerWithConfidence(RF3Trainer):
         batch_idx: int,
         compute_metrics: bool = True,
         should_early_stop_fn: ShouldEarlyStopFn | None = None,
+        step_callback=None,
     ) -> dict:
         """Validation step, running forward pass (with full rollout) and computing validation metrics, including confidence."""
         model = self.state["model"]
@@ -508,6 +509,7 @@ class RF3TrainerWithConfidence(RF3Trainer):
             ],  # Determine the number of recycles from the MSA stack shape
             coord_atom_lvl_to_be_noised=example["coord_atom_lvl_to_be_noised"],
             should_early_stop_fn=should_early_stop_fn,
+            step_callback=step_callback,
         )
 
         assert_no_nans(

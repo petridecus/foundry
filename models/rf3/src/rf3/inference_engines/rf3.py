@@ -391,6 +391,7 @@ class RF3InferenceEngine(BaseInferenceEngine):
         template_selection: list[str] | str | None = None,
         ground_truth_conformer_selection: list[str] | str | None = None,
         cyclic_chains: list[str] = [],
+        step_callback=None,
     ) -> dict[str, dict] | None:
         """Run inference on inputs.
 
@@ -548,12 +549,14 @@ class RF3InferenceEngine(BaseInferenceEngine):
                         batch_idx=0,
                         compute_metrics=True,
                         should_early_stop_fn=should_early_stop_fn,
+                        step_callback=step_callback,
                     )
                 else:
                     valid_step_outs = self.trainer.validation_step(
                         batch=pipeline_output,
                         batch_idx=0,
                         compute_metrics=True,
+                        step_callback=step_callback,
                     )
                 network_output = valid_step_outs["network_output"]
                 metrics_output = valid_step_outs["metrics_output"]

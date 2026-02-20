@@ -410,6 +410,17 @@ class AttentionPairBiasDiffusion(nn.Module):
             self.key_layer_norm = nn.LayerNorm((self.n_head * self.c,))
             self.query_layer_norm = nn.LayerNorm((self.n_head * self.c,))
 
+    @staticmethod
+    def _lowp_dtype():
+        """Return the preferred low-precision dtype for the current device.
+
+        MPS does not support bfloat16, and float16's narrow range (max ~65504)
+        causes overflow → NaN in attention scores.  Use float32 on MPS instead.
+        """
+        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            return torch.float32
+        return torch.bfloat16
+
     @activation_checkpointing
     def forward(
         self,
@@ -428,7 +439,7 @@ class AttentionPairBiasDiffusion(nn.Module):
             return self.atom_attention(A_I, S_I, Z_II)
 
         if self.use_deepspeed_evo or self.force_bfloat16:
-            A_I = A_I.to(torch.bfloat16)
+            A_I = A_I.to(self._lowp_dtype())
             assert len(A_I.shape) == 3, f"(Diffusion batch, I, C_a) but got {A_I.shape}"
 
         Q_IH = self.to_q(A_I)  # / np.sqrt(self.c)
@@ -471,10 +482,10 @@ class AttentionPairBiasDiffusion(nn.Module):
             V_IH = V_IH[:, None]
             B_IIH = B_IIH.repeat(Q_IH.shape[0], 1, 1, 1)
             B_IIH = B_IIH[:, None]
-            B_IIH = B_IIH.permute(0, 1, 4, 2, 3).to(torch.bfloat16)
+            B_IIH = B_IIH.permute(0, 1, 4, 2, 3).to(self._lowp_dtype())
             mask = torch.zeros(
                 [Q_IH.shape[0], 1, 1, 1, B_IIH.shape[-1]],
-                dtype=torch.bfloat16,
+                dtype=self._lowp_dtype(),
                 device=B_IIH.device,
             )
             A_I = DS4Sci_EvoformerAttention(Q_IH, K_IH, V_IH, [mask, B_IIH])

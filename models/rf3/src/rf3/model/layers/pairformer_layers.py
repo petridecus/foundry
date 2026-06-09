@@ -99,12 +99,11 @@ class AtomAttentionEncoderPairformer(nn.Module):
         assert S_trunk_I is None
         assert Z_II is None
 
-        # ... get the number of atoms and tokens
         tok_idx = f["atom_to_token_map"]
         L = len(tok_idx)  # N_atom
         I = tok_idx.max() + 1  # N_token
 
-        # ... flatten the last two dimensions of ref_atom_name_chars
+        # Flatten the last two dimensions of ref_atom_name_chars
         # (the letter dimension and the one-hot encoding of the unicode character dimension)
         f["ref_atom_name_chars"] = f["ref_atom_name_chars"].reshape(
             L, -1
@@ -232,12 +231,7 @@ class AttentionPairBiasPairformerDeepspeed(nn.Module):
             nn.Sigmoid(),
         )
         self.to_a = linearNoBias(c_a, c_a)
-        # self.linear_output_project = nn.Sequential(
-        # LinearBiasInit(c_s, c_a, biasinit=-2.),
-        # nn.Sigmoid(),
-        # )
         self.ln_0 = nn.LayerNorm((c_pair,))
-        # self.ada_ln_1 = AdaLN(c_a=c_a, c_s=c_s)
         self.ln_1 = nn.LayerNorm((c_a,))
         self.use_deepspeed_evo = False
         self.force_bfloat16 = True
@@ -260,7 +254,6 @@ class AttentionPairBiasPairformerDeepspeed(nn.Module):
         Z_II,  # [I, I, C_z]
         Beta_II=None,  # [I, I]
     ):
-        # Input projections
         assert S_I is None
         A_I = self.ln_1(A_I)
 
@@ -748,9 +741,6 @@ class RF3TemplateEmbedder(nn.Module):
             ).sqrt()
             joint_noise_level = af3_noise_scale_to_noise_level(joint_noise_scale)
 
-            # ---------------------------- #
-
-            # ... concatenate along the channel dimension
             template_feats = torch.cat(
                 [
                     distogram_condition,  # [I, I, 64]
@@ -760,17 +750,13 @@ class RF3TemplateEmbedder(nn.Module):
                 dim=-1,
             )  # [I, I, 66]
 
-            # ... remove any invalid interactions
+            # Remove any invalid interactions
             template_feats = template_feats * has_distogram_condition.unsqueeze(
                 -1
             )  # [I, I, 66], where 66 = 64 + 1 + 1
 
-            # ... embed template features
             template_channels = self.emb_templ(template_feats)  # [I, I, c]
 
-            # ---------------------------- #
-
-            # ... pass through pairformer
             u_II = torch.zeros(I, I, self.c, device=Z_II.device)
             v_II = (
                 self.emb_pair(self.norm_pair_before_pairformer(Z_II))

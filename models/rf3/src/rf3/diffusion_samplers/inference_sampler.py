@@ -163,7 +163,6 @@ class SampleDiffusion:
             # Update gamma
             gamma = self.gamma_0 if c_t > self.gamma_min else 0
 
-            # Compute the value of t_hat
             t_hat = c_t_minus_1 * (gamma + 1)
 
             # Noise the coordinates with scaled Gaussian noise
@@ -174,7 +173,6 @@ class SampleDiffusion:
             )
             X_noisy_L = X_L + epsilon_L
 
-            # Denoise the coordinates
             X_denoised_L = diffusion_module(
                 X_noisy_L=X_noisy_L,
                 t=t_hat.tile(D),

@@ -90,7 +90,6 @@ class TriangleAttention(nn.Module):
         if not self.start_node:
             pair = rearrange(pair, "b i j d -> b j i d")
 
-        # Route to appropriate implementation
         if self.use_cuequivariance and SHOULD_USE_CUEQUIVARIANCE:
             out = self._forward_cuequivariance(pair, bias)
         elif SHOULD_USE_MLX:
@@ -101,7 +100,6 @@ class TriangleAttention(nn.Module):
         if not self.start_node:
             out = rearrange(out, "b i j d -> b j i d")
 
-        # output projection
         out = self.to_out(out)
         return out
 
@@ -113,11 +111,10 @@ class TriangleAttention(nn.Module):
             pair = pair.to(dtype=dtype)
             bias = bias.to(dtype=dtype)
 
-        assert (
-            pair.dtype == torch.bfloat16 and bias.dtype == torch.bfloat16
-        ), f"cuEquivariance requires bfloat16 inputs (got pair={pair.dtype}, bias={bias.dtype})"
+        assert pair.dtype == torch.bfloat16 and bias.dtype == torch.bfloat16, (
+            f"cuEquivariance requires bfloat16 inputs (got pair={pair.dtype}, bias={bias.dtype})"
+        )
 
-        # Gate computation
         gate = torch.sigmoid(self.to_g(pair))  # (B, L, L, h*dim)
 
         # Project and reshape to cuEquivariance format: (B, L, H, L, D)
@@ -128,7 +125,6 @@ class TriangleAttention(nn.Module):
         # Bias: (B, L, L, H) -> (B, 1, H, L, L)
         bias_cueq = rearrange(bias, "b i j h -> b 1 h i j")
 
-        # Call cuEquivariance triangle attention
         out_cueq = cuet.triangle_attention(
             query, key, value, bias=bias_cueq, scale=self.scaling
         )
@@ -140,7 +136,7 @@ class TriangleAttention(nn.Module):
 
     def _forward_mlx(self, pair, bias):
         """MLX triangle attention for Apple Silicon GPU acceleration."""
-        # Gate computation (stays in PyTorch)
+        # Gate computation stays in PyTorch
         gate = torch.sigmoid(self.to_g(pair))  # (B, L, L, h*dim)
 
         # Project and reshape to cuEquivariance-compatible format: (B, L, H, L, D)
@@ -151,7 +147,6 @@ class TriangleAttention(nn.Module):
         # Bias: (B, L, L, H) -> (B, 1, H, L, L)
         bias_mlx = rearrange(bias, "b i j h -> b 1 h i j")
 
-        # MLX-accelerated attention
         out_mlx = mlx_triangle_attention(
             query, key, value, bias=bias_mlx, scale=self.scaling
         )
@@ -165,7 +160,6 @@ class TriangleAttention(nn.Module):
         """Vanilla PyTorch triangle attention implementation."""
         B, L = pair.shape[:2]
 
-        # Gate computation
         gate = torch.sigmoid(self.to_g(pair))  # (B, L, L, h*dim)
 
         # Project and reshape to vanilla format: (B, L, L, H, D)
@@ -208,14 +202,12 @@ class TriangleMultiplication(nn.Module):
     ):
         super(TriangleMultiplication, self).__init__()
 
-        # Set d_hidden to d_pair if not specified
         if d_hidden is None:
             d_hidden = d_pair
 
         self.d_pair = d_pair
         self.d_hidden = d_hidden
 
-        # Validate direction parameter
         if direction not in ["outgoing", "incoming"]:
             raise ValueError(
                 f"direction must be 'outgoing' or 'incoming', got '{direction}'"
@@ -226,13 +218,13 @@ class TriangleMultiplication(nn.Module):
 
         if self.use_cuequivariance:
             # cuEquivariance kernel requires d_pair == d_hidden...
-            assert (
-                d_pair == d_hidden
-            ), "cuEquivariance triangle multiplication requires d_pair == d_hidden"
+            assert d_pair == d_hidden, (
+                "cuEquivariance triangle multiplication requires d_pair == d_hidden"
+            )
             # ... and d_pair must be a multiple of 32
-            assert (
-                d_pair % 32 == 0
-            ), "cuEquivariance triangle multiplication requires d_pair to be a multiple of 32"
+            assert d_pair % 32 == 0, (
+                "cuEquivariance triangle multiplication requires d_pair to be a multiple of 32"
+            )
 
         # Input normalization (optional bias)
         self.norm_in = nn.LayerNorm(d_pair, bias=bias)
@@ -265,7 +257,6 @@ class TriangleMultiplication(nn.Module):
         self, pair: Float[torch.Tensor, "B N N D"]
     ) -> Float[torch.Tensor, "B N N D"]:
         """Forward pass of triangle multiplication."""
-        # Route to appropriate implementation
         if self.use_cuequivariance and SHOULD_USE_CUEQUIVARIANCE:
             return self._forward_cuequivariance(pair)
         elif SHOULD_USE_MLX:
@@ -298,36 +289,29 @@ class TriangleMultiplication(nn.Module):
         """Vanilla PyTorch triangle multiplication implementation."""
         B, L = pair.shape[:2]
 
-        # Input normalization
         pair_norm = self.norm_in(pair)
 
-        # Input projections: get combined output and split
+        # Input projections: combined output, then split
         p_combined = self.p_in(pair_norm)  # (B, L, L, 2*d_hidden)
         left = p_combined[..., : self.d_hidden]  # (B, L, L, d_hidden)
         right = p_combined[..., self.d_hidden :]  # (B, L, L, d_hidden)
 
-        # Input gating: get combined output and split
+        # Input gating: combined output, then split
         g_combined = self.g_in(pair_norm)  # (B, L, L, 2*d_hidden)
         left_gate = torch.sigmoid(g_combined[..., : self.d_hidden])
         right_gate = torch.sigmoid(g_combined[..., self.d_hidden :])
 
-        # Apply gating
         left = left_gate * left
         right = right_gate * right
 
-        # Triangle multiplication based on direction
         if self.direction == "outgoing":
             out = torch.einsum("bikd,bjkd->bijd", left, right / float(L))
         else:  # incoming
             out = torch.einsum("bkid,bkjd->bijd", left, right / float(L))
 
-        # Output normalization
         out = self.norm_out(out)
-
-        # Output projection
         out = self.p_out(out)
 
-        # Output gating
         gate = torch.sigmoid(self.g_out(pair_norm))
         out = gate * out
 
@@ -343,9 +327,9 @@ class TriangleMultiplication(nn.Module):
             dtype = torch.get_autocast_dtype("cuda")
             pair = pair.to(dtype=dtype)
 
-        assert (
-            pair.dtype == torch.bfloat16
-        ), "cuEquivariance requires bfloat16 inputs for optimal performance"
+        assert pair.dtype == torch.bfloat16, (
+            "cuEquivariance requires bfloat16 inputs for optimal performance"
+        )
 
         output = cuet.triangle_multiplicative_update(
             x=pair,

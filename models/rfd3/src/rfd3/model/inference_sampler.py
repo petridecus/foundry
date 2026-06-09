@@ -151,10 +151,9 @@ class SampleDiffusionWithMotif(SampleDiffusionConfig):
         f_ref: dict[str, Any] | None,
         step_callback: Callable[[StepInfo], None] | None = None,
     ) -> dict[str, Any]:
-        # Motif setup to recenter the motif at every step
+        # Recenter the motif at every step
         is_motif_atom_with_fixed_coord = f["is_motif_atom_with_fixed_coord"]
 
-        # Book-keeping
         noise_schedule = self._construct_inference_noise_schedule(
             device=coord_atom_lvl_to_be_noised.device,
             partial_t=f.get("partial_t", None),
@@ -207,11 +206,9 @@ class SampleDiffusionWithMotif(SampleDiffusionConfig):
                     s_trans=self.s_trans if step_num >= threshold_step else 0.0,
                 )
 
-            # Update gamma & step scale
             gamma = self.gamma_0 if c_t > self.gamma_min else 0
             step_scale = self.step_scale
 
-            # Compute the value of t_hat
             t_hat = c_t_minus_1 * (gamma + 1)
 
             # Noise the coordinates with scaled Gaussian noise
@@ -225,7 +222,6 @@ class SampleDiffusionWithMotif(SampleDiffusionConfig):
             )
             X_noisy_L = X_L + epsilon_L
 
-            # Denoise the coordinates
             # Handle chunked mode vs standard mode
             if "chunked_pairwise_embedder" in initializer_outputs:
                 # Chunked mode: explicitly provide P_LL=None
@@ -414,9 +410,8 @@ class SampleDiffusionWithSymmetry(SampleDiffusionWithMotif):
         step_callback: Callable[[StepInfo], None] | None = None,
         **_,
     ) -> dict[str, Any]:
-        # Motif setup to recenter the motif at every step
+        # Recenter the motif at every step
         is_motif_atom_with_fixed_coord = f["is_motif_atom_with_fixed_coord"]
-        # Book-keeping
         noise_schedule = self._construct_inference_noise_schedule(
             device=coord_atom_lvl_to_be_noised.device,
             partial_t=f.get("partial_t", None),
@@ -460,11 +455,9 @@ class SampleDiffusionWithSymmetry(SampleDiffusionWithMotif):
                     is_motif_atom_with_fixed_coord,
                 )
 
-            # Update gamma & step scale
             gamma = self.gamma_0 if c_t > self.gamma_min else 0
             step_scale = self.step_scale
 
-            # Compute the value of t_hat
             t_hat = c_t_minus_1 * (gamma + 1)
 
             # Noise the coordinates with scaled Gaussian noise
@@ -480,7 +473,6 @@ class SampleDiffusionWithSymmetry(SampleDiffusionWithMotif):
             # NOTE: no symmetry applied to the noisy structure
             X_noisy_L = X_L + epsilon_L
 
-            # Denoise the coordinates
             # Handle chunked mode vs standard mode (same as default sampler)
             if "chunked_pairwise_embedder" in initializer_outputs:
                 # Chunked mode: explicitly provide P_LL=None
@@ -684,7 +676,6 @@ def centre_random_augment_around_motif(
     else:
         center = torch.mean(X_L, dim=-2, keepdim=True)
 
-    # ... Center
     if centering_affects_motif:
         X_L = X_L - center
     else:

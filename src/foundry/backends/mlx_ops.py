@@ -22,7 +22,6 @@ try:
 except ImportError:
     MLX_AVAILABLE = False
 
-
 def _torch_to_mlx(tensor: torch.Tensor) -> "mx.array":
     """Convert a PyTorch tensor to an MLX array via numpy."""
     return mx.array(tensor.detach().cpu().to(torch.float32).numpy())
@@ -35,9 +34,8 @@ def _mlx_to_torch(
     return torch.from_numpy(np.array(array)).to(device=device, dtype=dtype)
 
 
-# ---------------------------------------------------------------------------
-# Triangle Attention (replaces cuet.triangle_attention)
-# ---------------------------------------------------------------------------
+# Triangle attention replaces cuet.triangle_attention; necessitated by bugs in
+# the MPS implementation of torch.softmax.
 
 
 def mlx_triangle_attention(
@@ -67,16 +65,13 @@ def mlx_triangle_attention(
     v = _torch_to_mlx(value)
     b = _torch_to_mlx(bias)
 
-    # Attention scores: (B, L, H, L_q, L_k)
     scores = mx.einsum("blhqd,blhkd->blhqk", q, k) * scale
 
-    # Add bias: (B, 1, H, L, L) broadcasts over L dimension
+    # Bias (B, 1, H, L, L) broadcasts over the L dimension
     scores = scores + b
 
-    # Softmax over key dimension
     weights = mx.softmax(scores, axis=-1)
 
-    # Apply attention: (B, L, H, L_q, D)
     out = mx.einsum("blhqk,blhkd->blhqd", weights, v)
 
     # Force MLX evaluation before numpy conversion
@@ -85,9 +80,7 @@ def mlx_triangle_attention(
     return _mlx_to_torch(out, orig_device, orig_dtype)
 
 
-# ---------------------------------------------------------------------------
-# Triangle Multiplicative Update (replaces cuet.triangle_multiplicative_update)
-# ---------------------------------------------------------------------------
+# Triangle multiplicative update replaces cuet.triangle_multiplicative_update.
 
 
 def mlx_triangle_multiplicative_update(
@@ -127,7 +120,6 @@ def mlx_triangle_multiplicative_update(
     orig_dtype = x.dtype
     D = x.shape[-1]
 
-    # Convert all parameters to MLX
     x_m = _torch_to_mlx(x)
     nin_w = _torch_to_mlx(norm_in_weight)
     nin_b = _torch_to_mlx(norm_in_bias) if norm_in_bias is not None else None
@@ -138,14 +130,14 @@ def mlx_triangle_multiplicative_update(
     p_out_w = _torch_to_mlx(p_out_weight)
     g_out_w = _torch_to_mlx(g_out_weight)
 
-    # --- Input LayerNorm ---
+    # Input LayerNorm
     mean = mx.mean(x_m, axis=-1, keepdims=True)
     var = mx.var(x_m, axis=-1, keepdims=True)
     x_norm = (x_m - mean) * mx.rsqrt(var + eps) * nin_w
     if nin_b is not None:
         x_norm = x_norm + nin_b
 
-    # --- Input projections (fused linear: weight is (2*D, D), applied as x @ W^T) ---
+    # Input projections (fused linear: weight is (2*D, D), applied as x @ W^T)
     p_combined = x_norm @ p_in_w.T  # (B, L, L, 2*D)
     left = p_combined[..., :D]
     right = p_combined[..., D:]
@@ -157,21 +149,21 @@ def mlx_triangle_multiplicative_update(
     left = left_gate * left
     right = right_gate * right
 
-    # --- Triangle multiplication ---
+    # Triangle multiplication
     L = x_m.shape[1]
     if direction == "outgoing":
         out = mx.einsum("bikd,bjkd->bijd", left, right / float(L))
     else:
         out = mx.einsum("bkid,bkjd->bijd", left, right / float(L))
 
-    # --- Output LayerNorm ---
+    # Output LayerNorm
     mean = mx.mean(out, axis=-1, keepdims=True)
     var = mx.var(out, axis=-1, keepdims=True)
     out = (out - mean) * mx.rsqrt(var + eps) * nout_w
     if nout_b is not None:
         out = out + nout_b
 
-    # --- Output projection + gating ---
+    # Output projection + gating
     out = out @ p_out_w.T
     gate = mx.sigmoid(x_norm @ g_out_w.T)
     out = gate * out

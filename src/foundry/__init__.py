@@ -18,11 +18,8 @@ should_typecheck = _env.bool("TYPE_CHECK", default=False)
 should_debug = _env.bool("DEBUG", default=False)
 should_check_nans = _env.bool("NAN_CHECK", default=True)
 
-# Set up logger
 logger = logging.getLogger("foundry")
-# ... set logging level based on `DEBUG` environment variable
 logger.setLevel(logging.DEBUG if should_debug else logging.INFO)
-# ... log the current mode
 logger.debug("Debug mode: %s", should_debug)
 logger.debug("Type checking mode: %s", should_typecheck)
 logger.debug("NAN checking mode: %s", should_check_nans)
@@ -72,7 +69,6 @@ DISABLE_CHECKPOINTING = False
 
 from foundry.step_info import StepInfo  # noqa: E402
 
-# Export for easy access
 __all__ = [
     "SHOULD_USE_CUEQUIVARIANCE",
     "SHOULD_USE_MLX",
